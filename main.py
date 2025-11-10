@@ -1,42 +1,67 @@
 import pygame
 
+import glm
 # file import
-import map as Map
+import map as chessmap
 import pieces
+import resource_loader
+from glm import ivec2
 
 pygame.init()
 
 # window param
-size = width, height = 1400, 700
+width, height = 1400, 700
+screen_size = ivec2(width, height)
 background_color = 255, 255, 255
 
 clock = pygame.time.Clock()
 
 #
-screen = pygame.display.set_mode(size)
+screen = pygame.display.set_mode(tuple(screen_size))
+
+resource_loader.load_resource()
 
 def runGame():
     running = True
 
-    map = Map.Renderer("brown")
-    map.setChessMap('test')
+    font_size = 45
+    font = pygame.font.SysFont(None, font_size)
 
-    map_size = 600
+    tile_size = 60
+    map = chessmap.Map(screen, screen_size, tile_size, "brown", "test")
+
+    # text = font.render(map.getMap(), True, (0, 0, 0))
+    # text_rect = text.get_rect(
+    #     center=(
+    #         size[0]*0.5,
+    #         size[1] - font_size*0.5
+    #     )
+    # )
 
     routes = None
     select_piece_pos = None; select_piece = pieces.Piece.Non
+
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                select_piece_pos, select_piece = map.selectPiece(event.pos, size, map_size)
-                routes = pieces.availableRoutes(select_piece_pos, select_piece, map.getNumMap())
-                print(select_piece_pos, select_piece)
+            map.poll_evnets(event)
 
         screen.fill(background_color)
 
-        map.draw(screen, size, map_size, select_piece_pos, select_piece, routes)
+        map.update()
+
+        # if map.updated():
+        #     print("test")
+        #     text = font.render(map.getMap(), True, (0, 0, 0))
+        #     text_rect = text.get_rect(
+        #         center=(
+        #             size[0]*0.5,
+        #             size[1] - font_size*0.5
+        #         )
+        #     )
+
+        # screen.blit(text, text_rect)
 
         pygame.display.flip()  # 더블버퍼 스왑
         clock.tick(60)  # FPS 60 고정as

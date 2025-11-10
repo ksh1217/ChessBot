@@ -1,170 +1,168 @@
 import pygame
-import json
 
 import pieces
+from pieces import Piece
+from glm import ivec2
+import resource_loader
 
-
-def getPieceByPos(pos, map):
-    return getPieceByIndex(pos[1] * 8 + pos[0], map)
-def getPieceByIndex(index, map):
-    for c in map:
-        if c == '/': continue
-
-        if index == 0:
-            if not c.isdigit():
-                return c
-            else:
-                return None
-
-        if c.isdigit():
-            index = index - int(c)
-        else:
-            index = index - 1
-
-
-class Renderer:
-    def __init__(self, tilemap_color_name='black-white', chess_map_name='default'):
-        with open('tilemap_color_list.json', 'r') as f:
-            self._tilemap_color_list = json.load(f)
-        with open('chess_map.json', 'r') as f:
-            self._chess_map_list = json.load(f)
+class Map:
+    def __init__(self, screen, screen_size, tile_size, tilemap_color_name='black-white', chess_map_name='default'):
+        self.screen = screen
+        self.screen_size = screen_size
+        self._tile_size = tile_size
 
         # default setting
-        self._tilemap_color = self._tilemap_color_list[tilemap_color_name]
+        self._tilemap_color = resource_loader.tilemap_color_list[tilemap_color_name]
 
         self._chess_map = []
-        self._chess_num_map = []
         self.setChessMap(chess_map_name)
 
-        self.font = pygame.font.SysFont('comicsans', 30)
+        self._update_toggle = False
 
-        self._tile_size = 60
+        self.select_pos = None
+        self.select_piece = None
+        self.routes = None
 
-        # 
+    #
     def setTileSize(self, size):
         self._tile_size = size
-
     def setTilemapColor(self, tilemap_name):
-        self._tilemap_color = self._tilemap_color_list[tilemap_name]
-
+        self._tilemap_color = resource_loader.tilemap_color_list[tilemap_name]
     def setChessMap(self, chess_map_name):
-        self._chess_map = self._chess_map_list[chess_map_name]
-
-        self._chess_num_map.clear()
-        for c in self._chess_map:
+        self._chess_map.clear()
+        for c in resource_loader.chess_map_list[chess_map_name]:
             if c == '/': continue
 
             if c.isdigit():
-                self._chess_num_map = (
-                        self._chess_num_map
-                        + [pieces.Piece.Non for _ in range(int(c))]
+                self._chess_map = (
+                        self._chess_map
+                        + [Piece.Non for _ in range(int(c))]
                 )
             else:
-                self._chess_num_map.append(pieces.getPieceByChar(c))
+                self._chess_map.append(pieces.getPieceByChar(c))
 
-
+    def getFEN(self):
+        pass
     def getMap(self):
         return self._chess_map
-    def getNumMap(self):
-        return self._chess_num_map
+    def getPiece(self, pos):
+        return self._chess_map[pos]
 
-    def selectPiece2Index(self, index):
-        return getPieceByIndex(index, self._chess_map)
-    def selectPiece2Pos(self, pos):
-        return self.selectPiece2Index(pos[1] * 8 + pos[0])
-    def selectPiece(self, event_pos, screen_size, size):
-        self.setTileSize(size // 8)
+    # def click_tile_event(self, event_pos, screen_size, size):
+    #     self.setTileSize(size // 8)
+    #
+    #     middle = mx, my = screen_size[0]/2, screen_size[1]/2
+    #     pos = cx, cy = (
+    #         mx - (4 * self._tile_size),
+    #         my - (4 * self._tile_size)
+    #     )
+    #     if ((event_pos[0] > cx + 8 * self._tile_size
+    #             or event_pos[1] > cy + 8 * self._tile_size) or
+    #         (event_pos[0] < cx
+    #             or event_pos[1] < cy)
+    #     ):
+    #         return 0
+    #
+    #     select_pos = ivec2(
+    #         (event_pos[0] - cx) // self._tile_size,
+    #         (event_pos[1] - cy) // self._tile_size
+    #     )
+    #
+    #     self.getPiece(select_pos)
 
-        middle = mx, my = screen_size[0]/2, screen_size[1]/2
-        pos = cx, cy = (
-            mx - (4 * self._tile_size),
-            my - (4 * self._tile_size)
-        )
-        if ((event_pos[0] > cx + 8 * self._tile_size
-                or event_pos[1] > cy + 8 * self._tile_size) or
-            (event_pos[0] < cx
-                or event_pos[1] < cy)
+
+    def compute(self):
+
+        self._update_toggle = True
+
+    def updated(self):
+        if not self._update_toggle: return False
+        self._update_toggle = False
+
+    def _select_tile_event(self, event_pos):
+        middle = self.screen_size * ivec2(0.5)
+        pos = middle - (4 * self._tile_size)
+        if ((event_pos[0] > pos.x + 8 * self._tile_size
+             or event_pos[1] > pos.y + 8 * self._tile_size) or
+                (event_pos[0] < pos.x
+                 or event_pos[1] < pos.y)
         ):
             return 0
-
-        select_pos = sx, sy = (
-            (event_pos[0] - cx) // self._tile_size,
-            (event_pos[1] - cy) // self._tile_size
+        select_pos = ivec2(
+            (event_pos[0] - pos.x) // self._tile_size,
+            (event_pos[1] - pos.y) // self._tile_size
         )
+        return (select_pos, self.getPiece(select_pos))
 
-        piece_char = self.selectPiece2Pos(select_pos)
-        if piece_char == None: return (select_pos, pieces.Piece.Non)
-        return (select_pos, pieces.getPieceByChar(piece_char))
+    def poll_evnets(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            self.select_pos, self.select_piece = self._select_tile_event(event.pos)
+            # print(select_piece, select_pos)
+            self.routes = pieces.availableRoutes(self.select_pos, self.select_piece, self._chess_map)
 
     # render
-    def draw(self, screen, screen_size, size, select_pos, select_piece, routes):
-        self.setTileSize(size // 8)
+    def update(self):
+        for pos in ivec2.range(8, 8):
+            self._draw_tile(pos)
 
-        for y in range(8):
-            for x in range(8):
-                index = y * 8 + x
+    def _draw_tile(self, pos):
+        tile_color = self._tilemap_color[(pos.x + pos.y) % 2]
+        self._draw_map_tile(tile_color, pos)
+        self._draw_piece(pos)
 
-                tile_color = self._tilemap_color[(x + y) % 2]
+        self._draw_routes()
 
-                self._draw_map_tile(
-                    screen, screen_size,
-                    tile_color,
-                    (x, y)
-                )
-
-                self._draw_piece(screen, screen_size, index, (x, y))
-
-        self._draw_routes(screen, screen_size, select_pos, select_piece, routes)
-
-    def _draw_piece(self, screen, screen_size, index, pos):
-        c = getPieceByIndex(index, self._chess_map)
-        if c == None: return
-        c = pieces.getPieceByChar(c)
-        test = self.font.render(str(c), True, (255, 0, 0))
-
-        middle = mx, my = screen_size[0] / 2, screen_size[1] / 2
-
-        tile_pos = cx, cy = (
-            mx - (4 * self._tile_size) + (pos[0] * self._tile_size),
-            my - (4 * self._tile_size) + (pos[1] * self._tile_size)
+    def _draw_piece(self, pos):
+        piece = self.getPiece(pos)
+        if piece == Piece.Non: return
+        self._draw_image_tile(
+            piece,
+            pos,
+            self._tile_size
         )
 
-        screen.blit(test, tile_pos)
-
-    def _draw_routes(self, screen, screen_size, pos, select_piece, routes):
-        if select_piece == pieces.Piece.Non: return
+    def _draw_routes(self):
+        if self.select_piece == None or self.select_piece == Piece.Non: return
         self._draw_map_tile(
-            screen, screen_size,
-            (255, 255, 0, 100),
-            pos
+            (0, 150, 0, 100),
+            self.select_pos
         )
-        if routes == None: return
-        piece_color = pieces.piece_color(select_piece)
-        for route in routes:
-            route_piece = getPieceByPos(route, self._chess_map)
-            if route_piece != None:
-                route_piece = pieces.getPieceByChar(route_piece)
-                if piece_color != pieces.piece_color(route_piece):
-                    self._draw_map_tile(
-                        screen, screen_size,
-                        (255, 0, 0, 100),
-                        route
-                    )
-                continue
-            self._draw_map_tile(
-                screen, screen_size,
-                (255, 255, 0, 100),
+        self._draw_piece(self.select_pos)
+        if self.routes == None: return
+        piece_color = pieces.piece_color(self.select_piece)
+        for route in self.routes[0]:
+            self._draw_image_tile(
+                "move_circle",
                 route,
+                self._tile_size * 0.3,
+                128
+            )
+        for route in self.routes[1]:
+            self._draw_image_tile(
+                "target_circle",
+                route,
+                self._tile_size,
+                128
             )
 
-    def _draw_map_tile(self, screen, screen_size, color, pos):
-        middle = mx, my = screen_size[0]/2, screen_size[1]/2
+    def _draw_image_tile(self, image, pos, size, alpha = 255):
+        middle = mx, my = self.screen_size[0] * 0.5, self.screen_size[1] * 0.5
 
         tile_pos = cx, cy = (
-            mx - (4 * self._tile_size) + (pos[0] * self._tile_size),
-            my - (4 * self._tile_size) + (pos[1] * self._tile_size)
+            mx - (4 * self._tile_size) + (pos[0] * self._tile_size) + ((self._tile_size - size) * 0.5),
+            my - (4 * self._tile_size) + (pos[1] * self._tile_size) + ((self._tile_size - size) * 0.5)
         )
 
+        img = pygame.transform.smoothscale(resource_loader.images[image], (size, size))
+        img.set_alpha(alpha)
+        self.screen.blit(img, tile_pos)
+
+    def _draw_map_tile(self, color, pos):
+        mx, my = self.screen_size[0] * 0.5, self.screen_size[1] * 0.5
+        cx, cy = (
+            mx - (4 * self._tile_size) + (pos.x * self._tile_size),
+            my - (4 * self._tile_size) + (pos.y * self._tile_size)
+        )
         if len(color) == 3: color = color + [255]
         rect_surf = pygame.Surface(
             (self._tile_size, self._tile_size),
@@ -174,4 +172,4 @@ class Renderer:
             color,
             rect_surf.get_rect()
         )
-        screen.blit(rect_surf, (cx, cy))
+        self.screen.blit(rect_surf, (cx, cy))

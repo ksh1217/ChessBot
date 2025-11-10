@@ -2,6 +2,7 @@ from typing import Tuple
 
 import pygame
 from enum import IntFlag
+from glm import ivec2
 
 '''
 00/000
@@ -19,11 +20,6 @@ class Piece(IntFlag):
     White = 8   # 01000
     Black = 16  # 10000
     ColorFilter = 7 # 00111
-
-def getPos2Index(index):
-    return index // 8, index % 8
-def getIndex2Pos(pos):
-    return int(pos[1] * 8 + pos[0])
 
 def getPieceByChar(char):
     piece = Piece.Non
@@ -44,8 +40,8 @@ def getPieceByChar(char):
 
 
 def availableRoutes(pos, piece, map):
-    if piece == None: return []
-    if piece == Piece.Non: return []
+    if piece == None or piece == Piece.Non: return []
+
     # routes 객체를 재사용하도록 외부에서 넘길 수 있게
     routes = PieceRoutes(map)
 
@@ -69,6 +65,10 @@ def piece_color(p: Piece):
     if p & Piece.White: return Piece.White
     if p & Piece.Black: return Piece.Black
     return None
+def piece_enemy_color(p: Piece):
+    if p & Piece.White: return Piece.Black
+    if p & Piece.Black: return Piece.White
+    return None
 
 #
 class PieceRoutes:
@@ -77,87 +77,107 @@ class PieceRoutes:
     def __init__(self, map):
         self.map = map
 
-    def in_board(slef, x: int, y: int) -> bool:
-        return 0 <= x < 8 and 0 <= y < 8
+    def in_board(slef, pos) -> bool:
+        return 0 <= pos.x < 8 and 0 <= pos.y < 8
 
     def _empty(self, pos) -> bool:
-        index = getIndex2Pos(pos)
-        return self.map[index] == Piece.Non
+        return self.map[pos] == Piece.Non
 
     def _ally(self, pos, my_color) -> bool:
-        index = getIndex2Pos(pos)
-        p = self.map[index]
+        p = self.map[pos]
         return p != Piece.Non and piece_color(p) == my_color
 
     def _enemy(self, pos, my_color) -> bool:
-        index = getIndex2Pos(pos)
-        p = self.map[index]
+        p = self.map[pos]
         c = piece_color(p)
         return p != Piece.Non and (c is not None) and c != my_color
 
     def _ray(self, pos, dirs, my_color):
-        x0, y0 = pos
         out = []
-        for dx, dy in dirs:
-            x, y = x0 + dx, y0 + dy
-            while self.in_board(x, y):
-                if self._ally((x, y), my_color):
+        out_enemy = []
+        for dpos in dirs:
+            npos = ivec2(pos + dpos)
+            while self.in_board(npos):
+                if self._ally(npos, my_color):
                     break
-                out.append((x, y))
-                if not self._empty((x, y)):  # 적군이면 그 칸 추가 후 중단
+                if not self._empty(npos):  # 적군이면 그 칸 추가 후 중단
+                    out_enemy.append(npos)
                     break
-                x += dx
-                y += dy
-        return out
+                out.append(npos)
+                npos = npos + dpos
+        return (out, out_enemy)
 
     def king_routes(self, pos):
-        x, y = pos
-        me = self.map[getIndex2Pos(pos)]
+        me = self.map[pos]
         my_color = piece_color(me)
         moves = []
-        for dx, dy in ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)):
-            nx, ny = x + dx, y + dy
-            if not self.in_board(nx, ny): continue
-            if not self._ally((nx, ny), my_color):
-                moves.append((nx, ny))
-        return moves
+        target = []
+        for dpos in ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)):
+            npos = ivec2(pos + dpos)
+            if not self.in_board(npos): continue
+            if not self._ally((npos), my_color):
+                if self._ally(npos, piece_enemy_color(my_color)):
+                    target.append(npos)
+                else:
+                    moves.append(npos)
+        return (moves, target)
 
     def queen_routes(self, pos):
-        me = self.map[getIndex2Pos(pos)]
+        me = self.map[pos]
         my_color = piece_color(me)
         rook_dirs = [(1, 0), (-1, 0), (0, 1), (0, -1)]
         bishop_dirs = [(1, 1), (1, -1), (-1, 1), (-1, -1)]
         return self._ray(pos, rook_dirs + bishop_dirs, my_color)
 
     def rook_routes(self, pos):
-        me = self.map[getIndex2Pos(pos)]
+        me = self.map[pos]
         my_color = piece_color(me)
         rook_dirs = [(1, 0), (-1, 0), (0, 1), (0, -1)]
         return self._ray(pos, rook_dirs, my_color)
 
     def bishop_routes(self, pos):
-        me = self.map[getIndex2Pos(pos)]
+        me = self.map[pos]
         my_color = piece_color(me)
         bishop_dirs = [(1, 1), (1, -1), (-1, 1), (-1, -1)]
         return self._ray(pos, bishop_dirs, my_color)
 
     def knight_routes(self, pos):
-        x, y = pos
-        me = self.map[getIndex2Pos(pos)]
+        me = self.map[pos]
         my_color = piece_color(me)
         moves = []
-        for dx, dy in ((-2, -1), (-2, 1), (2, -1), (2, 1), (1, -2), (-1, -2), (1, 2), (-1, 2)):
-            nx, ny = x + dx, y + dy
-            if not self.in_board(nx, ny): continue
-            if not self._ally((nx, ny), my_color):
-                moves.append((nx, ny))
-        return moves
+        target = []
+        for dpos in ((-2, -1), (-2, 1), (2, -1), (2, 1), (1, -2), (-1, -2), (1, 2), (-1, 2)):
+            npos = pos + dpos
+            if not self.in_board(npos): continue
+            if not self._ally(npos, my_color):
+                if self._ally(npos, piece_enemy_color(my_color)):
+                    target.append(npos)
+                else:
+                    moves.append(npos)
+        return (moves, target)
 
     def pawn_routes(self, pos):
-        out = []
-        me = self.map[getIndex2Pos(pos)]
+        x, y = pos
+        me = self.map[pos]
         my_color = piece_color(me)
-        if my_color == Piece.Black: out.append((pos[0], pos[1] - 1))
-        if my_color == Piece.White: out.append((pos[0], pos[1] + 1))
-        print('pawn', pos, me, my_color)
-        return out
+        enemy_color = piece_enemy_color(my_color)
+        moves = []
+        target = []
+        dir = -1
+        start_rank = 6
+        if my_color == Piece.White:
+            dir = 1
+            start_rank = 1
+        if self._ally(ivec2(pos + ivec2(-1, dir)), enemy_color):
+            target.append(ivec2(pos + ivec2(-1, dir)))
+        if self._ally(ivec2(pos + ivec2(1, dir)), enemy_color):
+            target.append(ivec2(pos + ivec2(1, dir)))
+
+        ny = y + dir
+        if self.in_board(ivec2(x, ny)) and self._empty(ivec2(x, ny)):
+            moves.append(ivec2(x, ny))
+            ny2 = y + (dir * 2)
+            if start_rank == y and self._empty(ivec2(x, ny2)):
+                moves.append(ivec2(x, ny2))
+
+        return (moves, target)
