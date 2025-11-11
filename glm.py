@@ -1,6 +1,3 @@
-from dataclasses import dataclass
-
-@dataclass(frozen=True, slots=True)
 class ivec2:
     __slots__ = ("x", "y")
 
@@ -40,6 +37,19 @@ class ivec2:
     def __mod__(self, other):
         ox, oy = self._unpack(other)
         return ivec2(self.x % ox, self.y % oy)
+
+    def __gt__(self, other):
+        ox, oy = self._unpack(other)
+        return ivec2(self.x > ox, self.y > oy)
+    def __ge__(self, other):
+        ox, oy = self._unpack(other)
+        return ivec2(self.x >= ox, self.y >= oy)
+    def __lt__(self, other):
+        ox, oy = self._unpack(other)
+        return ivec2(self.x < ox, self.y < oy)
+    def __le__(self, other):
+        ox, oy = self._unpack(other)
+        return ivec2(self.x <= ox, self.y <= oy)
 
     # ───────── 내부 헬퍼 ─────────
     def _unpack(self, other):

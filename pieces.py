@@ -21,6 +21,18 @@ class Piece(IntFlag):
     Black = 16  # 10000
     ColorFilter = 7 # 00111
 
+def getCharByPiece(piece: Piece):
+    p = piece & Piece.ColorFilter
+    c = {
+        Piece.King: 'k',
+        piece.Pawn: 'p',
+        piece.Knight: 'n',
+        piece.Bishop: 'b',
+        piece.Rook: 'r',
+        piece.Queen: 'q',
+    }[p]
+    if piece & Piece.Black > 0: c = c.upper()
+    return c
 def getPieceByChar(char):
     piece = Piece.Non
 
@@ -65,7 +77,7 @@ def piece_color(p: Piece):
     if p & Piece.White: return Piece.White
     if p & Piece.Black: return Piece.Black
     return None
-def piece_enemy_color(p: Piece):
+def piece_invert_color(p: Piece):
     if p & Piece.White: return Piece.Black
     if p & Piece.Black: return Piece.White
     return None
@@ -115,8 +127,8 @@ class PieceRoutes:
         for dpos in ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)):
             npos = ivec2(pos + dpos)
             if not self.in_board(npos): continue
-            if not self._ally((npos), my_color):
-                if self._ally(npos, piece_enemy_color(my_color)):
+            if not self._ally(npos, my_color):
+                if self._ally(npos, piece_invert_color(my_color)):
                     target.append(npos)
                 else:
                     moves.append(npos)
@@ -150,7 +162,7 @@ class PieceRoutes:
             npos = pos + dpos
             if not self.in_board(npos): continue
             if not self._ally(npos, my_color):
-                if self._ally(npos, piece_enemy_color(my_color)):
+                if self._ally(npos, piece_invert_color(my_color)):
                     target.append(npos)
                 else:
                     moves.append(npos)
@@ -160,7 +172,7 @@ class PieceRoutes:
         x, y = pos
         me = self.map[pos]
         my_color = piece_color(me)
-        enemy_color = piece_enemy_color(my_color)
+        enemy_color = piece_invert_color(my_color)
         moves = []
         target = []
         dir = -1
@@ -168,10 +180,12 @@ class PieceRoutes:
         if my_color == Piece.White:
             dir = 1
             start_rank = 1
-        if self._ally(ivec2(pos + ivec2(-1, dir)), enemy_color):
-            target.append(ivec2(pos + ivec2(-1, dir)))
-        if self._ally(ivec2(pos + ivec2(1, dir)), enemy_color):
-            target.append(ivec2(pos + ivec2(1, dir)))
+        npos = ivec2(pos + (-1, dir))
+        if self._ally(npos, enemy_color) and self.in_board(npos):
+            target.append(npos)
+        npos = ivec2(pos + (1, dir))
+        if self._ally(npos, enemy_color) and self.in_board(npos):
+            target.append(npos)
 
         ny = y + dir
         if self.in_board(ivec2(x, ny)) and self._empty(ivec2(x, ny)):

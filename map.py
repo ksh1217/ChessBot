@@ -1,4 +1,5 @@
 import pygame
+from dask import compute
 
 import pieces
 from pieces import Piece
@@ -14,15 +15,19 @@ class Map:
         # default setting
         self._tilemap_color = resource_loader.tilemap_color_list[tilemap_color_name]
 
+        self._chess_FEN = resource_loader.chess_map_list[chess_map_name]
         self._chess_map = []
         self.setChessMap(chess_map_name)
 
         self._update_toggle = False
+        self._compute = False
 
         self.select_pos = None
         self.select_piece = None
         self.routes = None
 
+        self._FEN_count = 0
+        self._win_team = Piece.Non
     #
     def setTileSize(self, size):
         self._tile_size = size
@@ -42,78 +47,104 @@ class Map:
                 self._chess_map.append(pieces.getPieceByChar(c))
 
     def getFEN(self):
-        pass
+        return self._chess_FEN
     def getMap(self):
         return self._chess_map
     def getPiece(self, pos):
         return self._chess_map[pos]
 
-    # def click_tile_event(self, event_pos, screen_size, size):
-    #     self.setTileSize(size // 8)
-    #
-    #     middle = mx, my = screen_size[0]/2, screen_size[1]/2
-    #     pos = cx, cy = (
-    #         mx - (4 * self._tile_size),
-    #         my - (4 * self._tile_size)
-    #     )
-    #     if ((event_pos[0] > cx + 8 * self._tile_size
-    #             or event_pos[1] > cy + 8 * self._tile_size) or
-    #         (event_pos[0] < cx
-    #             or event_pos[1] < cy)
-    #     ):
-    #         return 0
-    #
-    #     select_pos = ivec2(
-    #         (event_pos[0] - cx) // self._tile_size,
-    #         (event_pos[1] - cy) // self._tile_size
-    #     )
-    #
-    #     self.getPiece(select_pos)
-
+    def ended(self):
+        return self._win_team
 
     def compute(self):
-
-        self._update_toggle = True
+        self._chess_FEN = ""
+        self._FEN_count = 0
+        self._compute = True
 
     def updated(self):
         if not self._update_toggle: return False
         self._update_toggle = False
+        self._compute = False
+        return True
 
-    def _select_tile_event(self, event_pos):
+    def _compute_select_tile(self, event_pos):
         middle = self.screen_size * ivec2(0.5)
         pos = middle - (4 * self._tile_size)
-        if ((event_pos[0] > pos.x + 8 * self._tile_size
-             or event_pos[1] > pos.y + 8 * self._tile_size) or
-                (event_pos[0] < pos.x
-                 or event_pos[1] < pos.y)
-        ):
-            return 0
-        select_pos = ivec2(
+        epos = ivec2(
             (event_pos[0] - pos.x) // self._tile_size,
             (event_pos[1] - pos.y) // self._tile_size
         )
-        return (select_pos, self.getPiece(select_pos))
+        if (epos.x < 0 or 7 < epos.x
+            or epos.y < 0 or 7 < epos.y
+        ):
+            return None
+        return epos
+    def _select_tile_event(self, event_pos, turn):
+        select_pos = self._compute_select_tile(event_pos)
+        if select_pos is None:
+            return (None, None)
+        piece = self.getPiece(select_pos)
+        if ~Piece.ColorFilter & piece is not turn:
+            return (None, None)
+        return (select_pos, piece)
+    def _move_piece_event(self, event_pos):
+        if self.select_piece is not None and len(self.routes) > 0:
+            spos = self._compute_select_tile(event_pos)
+            if spos is None: return False
+            for pos in self.routes[0]:
+                if pos == spos:
+                    self._chess_map[spos] = self.select_piece
+                    self._chess_map[self.select_pos] = Piece.Non
+                    self.select_piece = None
+                    return True
+            for pos in self.routes[1]:
+                if pos == spos:
+                    if self._chess_map[spos] & Piece.ColorFilter == Piece.King:
+                        self._win_team = self._chess_map[spos] & ~Piece.ColorFilter
+                    self._chess_map[spos] = self.select_piece
+                    self._chess_map[self.select_pos] = Piece.Non
+                    self.select_piece = None
+                    return True
+        return False
 
-    def poll_evnets(self, event):
+    def poll_evnets(self, event, turn):
         if event.type == pygame.MOUSEBUTTONDOWN:
-            self.select_pos, self.select_piece = self._select_tile_event(event.pos)
+            if self._move_piece_event(event.pos):
+                self.compute()
+            else:
+                self.select_pos, self.select_piece = self._select_tile_event(event.pos, turn)
+                self.routes = pieces.availableRoutes(self.select_pos, self.select_piece, self._chess_map)
             # print(select_piece, select_pos)
-            self.routes = pieces.availableRoutes(self.select_pos, self.select_piece, self._chess_map)
+            # if not moved:
 
     # render
     def update(self):
+        self._update_toggle = self._compute
         for pos in ivec2.range(8, 8):
             self._draw_tile(pos)
+        self._draw_routes()
 
     def _draw_tile(self, pos):
         tile_color = self._tilemap_color[(pos.x + pos.y) % 2]
         self._draw_map_tile(tile_color, pos)
+        # if self.select_pos is not None and self.select_pos == pos: return
         self._draw_piece(pos)
-
-        self._draw_routes()
 
     def _draw_piece(self, pos):
         piece = self.getPiece(pos)
+        if self._update_toggle:
+            if piece == Piece.Non:
+                self._FEN_count = self._FEN_count + 1
+            else:
+                if self._FEN_count > 0:
+                    self._chess_FEN = self._chess_FEN + str(self._FEN_count)
+                    self._FEN_count = 0
+                self._chess_FEN = self._chess_FEN + pieces.getCharByPiece(piece)
+            if pos.x >= 7:
+                # print(pos.x, pos.y)
+                self._FEN_count = 0
+                self._chess_FEN = self._chess_FEN + "/"
+
         if piece == Piece.Non: return
         self._draw_image_tile(
             piece,
