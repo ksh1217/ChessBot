@@ -19,6 +19,7 @@ class Piece(IntFlag):
 
     White = 8   # 01000
     Black = 16  # 10000
+
     ColorFilter = 7 # 00111
 
 def getCharByPiece(piece: Piece):
@@ -51,11 +52,11 @@ def getPieceByChar(char):
     }[char.lower()]
 
 
-def availableRoutes(pos, piece, map):
+def availableRoutes(pos, piece, map, enpassant):
     if piece == None or piece == Piece.Non: return []
 
     # routes 객체를 재사용하도록 외부에서 넘길 수 있게
-    routes = PieceRoutes(map)
+    routes = PieceRoutes(map, enpassant)
 
     kind = piece & Piece.ColorFilter  # 타입만 추출
 
@@ -84,10 +85,9 @@ def piece_invert_color(p: Piece):
 
 #
 class PieceRoutes:
-    Coord = Tuple[int, int]
-
-    def __init__(self, map):
+    def __init__(self, map, enpassant):
         self.map = map
+        self.enpassant = enpassant
 
     def in_board(slef, pos) -> bool:
         return 0 <= pos.x < 8 and 0 <= pos.y < 8
@@ -175,23 +175,19 @@ class PieceRoutes:
         enemy_color = piece_invert_color(my_color)
         moves = []
         target = []
-        dir = -1
-        start_rank = 6
-        if my_color == Piece.White:
-            dir = 1
-            start_rank = 1
-        npos = ivec2(pos + (-1, dir))
-        if self._ally(npos, enemy_color) and self.in_board(npos):
-            target.append(npos)
-        npos = ivec2(pos + (1, dir))
-        if self._ally(npos, enemy_color) and self.in_board(npos):
-            target.append(npos)
-
-        ny = y + dir
-        if self.in_board(ivec2(x, ny)) and self._empty(ivec2(x, ny)):
-            moves.append(ivec2(x, ny))
-            ny2 = y + (dir * 2)
-            if start_rank == y and self._empty(ivec2(x, ny2)):
-                moves.append(ivec2(x, ny2))
+        dir, start_rank = (-1, 6) if my_color == Piece.Black else (1, 1)
+        for dx in (-1, 1):
+            npos = ivec2(pos + (dx, dir))
+            if self.in_board(npos):
+                if self._ally(npos, enemy_color):
+                    target.append(npos)
+                if self.enpassant is not None and self.enpassant == npos:
+                    target.append(npos)
+        npos = ivec2(x, y + dir)
+        if self.in_board(npos) and self._empty(npos):
+            moves.append(npos)
+            npos2 = ivec2(x, y + (dir * 2))
+            if start_rank == y and self._empty(npos2):
+                moves.append(npos2)
 
         return (moves, target)

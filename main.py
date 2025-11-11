@@ -66,6 +66,16 @@ def runGame():
 
         screen.blit(text, text_rect)
 
+        text_str = "turn: " + ("Black" if turn is Piece.Black else "White")
+        text2 = font.render(text_str, True, (0, 0, 0))
+        text_rect2 = text2.get_rect(
+            center=(
+                screen_size.x * 0.5,
+                font_size * 0.5
+            )
+        )
+        screen.blit(text2, text_rect2)
+
         if map.ended() is not Piece.Non:
             # print("ended")
             running = runGame()
